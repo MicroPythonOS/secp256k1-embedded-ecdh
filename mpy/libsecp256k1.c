@@ -6,10 +6,13 @@
 #include "include/secp256k1_extrakeys.h"
 #include "include/secp256k1_schnorrsig.h"
 #include "include/secp256k1_recovery.h"
+#include "include/secp256k1_ecdh.h"
 #include "py/obj.h"
 #include "py/runtime.h"
 #include "py/builtin.h"
 #include "py/gc.h"
+
+#define DEBUG_PRINTF(...) mp_printf(&mp_plat_print, __VA_ARGS__)
 
 #define malloc(b) gc_alloc((b), false)
 #define free gc_free
@@ -549,14 +552,14 @@ static mp_obj_t usecp256k1_ec_privkey_add(mp_obj_t privarg, const mp_obj_t tweak
     mp_buffer_info_t privbuf;
     mp_get_buffer_raise(privarg, &privbuf, MP_BUFFER_READ);
     if(privbuf.len != 32){
-        mp_raise_ValueError("Private key should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Private key should be 32 bytes long"));
         return mp_const_none;
     }
 
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
@@ -566,7 +569,7 @@ static mp_obj_t usecp256k1_ec_privkey_add(mp_obj_t privarg, const mp_obj_t tweak
 
     int res = secp256k1_ec_privkey_tweak_add(ctx, (unsigned char*)priv2.buf, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the private key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the private key"));
         return mp_const_none;
     }
     return mp_obj_new_bytes_from_vstr(&priv2);
@@ -610,7 +613,7 @@ static mp_obj_t usecp256k1_ec_pubkey_add(mp_obj_t pubarg, const mp_obj_t tweakar
     mp_buffer_info_t pubbuf;
     mp_get_buffer_raise(pubarg, &pubbuf, MP_BUFFER_READ);
     if(pubbuf.len != 64){
-        mp_raise_ValueError("Public key should be 64 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pub;
@@ -619,13 +622,13 @@ static mp_obj_t usecp256k1_ec_pubkey_add(mp_obj_t pubarg, const mp_obj_t tweakar
     mp_buffer_info_t tweakbuf;
     mp_get_buffer_raise(tweakarg, &tweakbuf, MP_BUFFER_READ);
     if(tweakbuf.len != 32){
-        mp_raise_ValueError("Tweak should be 32 bytes long");
+        mp_raise_ValueError(MP_ERROR_TEXT("Tweak should be 32 bytes long"));
         return mp_const_none;
     }
 
     int res = secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweakbuf.buf);
     if(!res){ // never happens according to the API
-        mp_raise_ValueError("Failed to tweak the public key");
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to tweak the public key"));
         return mp_const_none;
     }
 
@@ -942,6 +945,84 @@ static mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ecdsa_sign_recoverable_obj, 2, usecp256k1_ecdsa_sign_recoverable);
 
+
+
+
+
+
+
+
+
+
+
+
+// Custom hash function for Nostr: copy the X coordinate directly
+static int nostr_ecdh_x_only(
+    unsigned char *output, const unsigned char *x, const unsigned char *y, void *data
+) {
+    (void)y; // Unused
+    (void)data; // Unused
+    memcpy(output, x, 32);
+    return 1; // Success
+}
+
+// pubkey (64-byte deserialized secp256k1_pubkey), seckey
+static mp_obj_t usecp256k1_ecdh(mp_uint_t n_args, const mp_obj_t *args) {
+    maybe_init_ctx();
+
+    if (n_args < 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT("Function requires two arguments: pubkey and seckey"));
+        return mp_const_none;
+    }
+
+    // Get public key buffer (expect 64-byte secp256k1_pubkey)
+    mp_buffer_info_t pubkey_buf;
+    mp_get_buffer_raise(args[0], &pubkey_buf, MP_BUFFER_READ);
+    if (pubkey_buf.len != 64) {
+        mp_raise_ValueError(MP_ERROR_TEXT("Public key must be 64-byte deserialized secp256k1_pubkey"));
+        return mp_const_none;
+    }
+    DEBUG_PRINTF("Input public key length: %u, first 8 bytes: ", (unsigned int)pubkey_buf.len);
+    for (size_t i = 0; i < 8; i++) {
+        DEBUG_PRINTF("%02x ", ((unsigned char *)pubkey_buf.buf)[i]);
+    }
+    DEBUG_PRINTF("\n");
+
+    // Get and validate seckey (32 bytes)
+    mp_buffer_info_t seckey_buf;
+    mp_get_buffer_raise(args[1], &seckey_buf, MP_BUFFER_READ);
+    if (seckey_buf.len != 32) {
+        mp_raise_ValueError(MP_ERROR_TEXT("Secret key must be 32 bytes long"));
+        return mp_const_none;
+    }
+    DEBUG_PRINTF("Validated seckey, length: %u\n", (unsigned int)seckey_buf.len);
+
+    // Prepare output buffer (32 bytes for ECDH secret)
+    unsigned char output[32];
+
+    // Use Nostr-specific hash function (X coordinate only)
+    secp256k1_ecdh_hash_function hashfp = nostr_ecdh_x_only;
+    void *data = NULL;
+    DEBUG_PRINTF("Using Nostr X-only hash function\n");
+
+    // Call secp256k1_ecdh with pubkey as secp256k1_pubkey
+    int res = secp256k1_ecdh(ctx, output, (secp256k1_pubkey *)pubkey_buf.buf, seckey_buf.buf, hashfp, data);
+    if (!res) {
+        mp_raise_ValueError(MP_ERROR_TEXT("Failed to compute ECDH secret"));
+        return mp_const_none;
+    }
+    DEBUG_PRINTF("Successfully computed ECDH secret\n");
+
+    // Create MicroPython bytes object for output
+    vstr_t vstr;
+    vstr_init_len(&vstr, 32);
+    memcpy((byte *)vstr.buf, output, 32);
+
+    return mp_obj_new_bytes_from_vstr(&vstr);
+}
+
+static MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ecdh_obj, 2, usecp256k1_ecdh);
+
 /****************************** MODULE ******************************/
 
 static const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
@@ -962,6 +1043,7 @@ static const mp_rom_map_elem_t secp256k1_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_schnorrsig_verify), MP_ROM_PTR(&usecp256k1_schnorrsig_verify_obj) },
     { MP_ROM_QSTR(MP_QSTR_keypair_create), MP_ROM_PTR(&usecp256k1_keypair_create_obj) },
     { MP_ROM_QSTR(MP_QSTR_schnorrsig_sign), MP_ROM_PTR(&usecp256k1_schnorrsig_sign_obj) },
+    { MP_ROM_QSTR(MP_QSTR_ecdh), MP_ROM_PTR(&usecp256k1_ecdh_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_ecdsa_sign_recoverable), MP_ROM_PTR(&usecp256k1_ecdsa_sign_recoverable_obj) },
 
@@ -989,4 +1071,4 @@ const mp_obj_module_t secp256k1_user_cmodule = {
     .globals = (mp_obj_dict_t*)&secp256k1_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_secp256k1, secp256k1_user_cmodule);
+MP_REGISTER_MODULE(MP_QSTR_usecp256k1, secp256k1_user_cmodule);
