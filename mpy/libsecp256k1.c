@@ -119,24 +119,24 @@ static mp_obj_t usecp256k1_ec_pubkey_parse(const mp_obj_t arg){
 static MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_ec_pubkey_parse_obj, usecp256k1_ec_pubkey_parse);
 
 // serialize public key
-static mp_obj_t usecp256k1_ec_pubkey_serialize(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_ec_pubkey_serialize(size_t n_args, const mp_obj_t *args) {
     maybe_init_ctx();
     mp_buffer_info_t pubbuf;
     mp_get_buffer_raise(args[0], &pubbuf, MP_BUFFER_READ);
-    if(pubbuf.len != 64){
+    if (pubbuf.len != 64) {
         mp_raise_ValueError(MP_ERROR_TEXT("Pubkey should be 64 bytes long"));
         return mp_const_none;
     }
     secp256k1_pubkey pubkey;
     memcpy(pubkey.data, pubbuf.buf, 64);
     mp_int_t flag = SECP256K1_EC_COMPRESSED;
-    if(n_args > 1){
+    if (n_args > 1) {
         flag = mp_obj_get_int(args[1]);
     }
     byte out[65];
     size_t len = 65;
     int res = secp256k1_ec_pubkey_serialize(ctx, out, &len, &pubkey, flag);
-    if(!res){
+    if (!res) {
         mp_raise_ValueError(MP_ERROR_TEXT("Failed serializing public key"));
         return mp_const_none;
     }
@@ -145,7 +145,6 @@ static mp_obj_t usecp256k1_ec_pubkey_serialize(mp_uint_t n_args, const mp_obj_t 
     memcpy((byte*)vstr.buf, out, len);
     return mp_obj_new_bytes_from_vstr(&vstr);
 }
-
 static MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ec_pubkey_serialize_obj, 1, usecp256k1_ec_pubkey_serialize);
 
 // parse compact ecdsa signature
@@ -297,7 +296,7 @@ static mp_obj_t usecp256k1_ecdsa_signature_normalize(const mp_obj_t arg){
 static MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_ecdsa_signature_normalize_obj, usecp256k1_ecdsa_signature_normalize);
 
 // same as secp256k1_nonce_function_rfc6979
-static mp_obj_t usecp256k1_nonce_function_default(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_nonce_function_default(size_t n_args, const mp_obj_t *args){
     mp_buffer_info_t msgbuf;
     mp_get_buffer_raise(args[0], &msgbuf, MP_BUFFER_READ);
     if(msgbuf.len != 32){
@@ -399,7 +398,7 @@ static int usecp256k1_nonce_function(
 }
 
 // msg, secret, [callback, data]
-static mp_obj_t usecp256k1_ecdsa_sign(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_ecdsa_sign(size_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
@@ -698,7 +697,7 @@ static mp_obj_t usecp256k1_ec_pubkey_tweak_mul(mp_obj_t pubarg, const mp_obj_t t
 static MP_DEFINE_CONST_FUN_OBJ_2(usecp256k1_ec_pubkey_tweak_mul_obj, usecp256k1_ec_pubkey_tweak_mul);
 
 // adds public keys
-static mp_obj_t usecp256k1_ec_pubkey_combine(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_ec_pubkey_combine(size_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
     secp256k1_pubkey pubkey;
     secp256k1_pubkey ** pubkeys;
@@ -825,7 +824,7 @@ static MP_DEFINE_CONST_FUN_OBJ_1(usecp256k1_keypair_create_obj, usecp256k1_keypa
 
 
 // msg, secret, [callback, data]
-static mp_obj_t usecp256k1_schnorrsig_sign(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_schnorrsig_sign(size_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
@@ -892,7 +891,7 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_schnorrsig_sign_obj, 2, usecp256k1
 /**************************** recoverable ***************************/
 
 // msg, secret, [callback, data]
-static mp_obj_t usecp256k1_ecdsa_sign_recoverable(mp_uint_t n_args, const mp_obj_t *args){
+static mp_obj_t usecp256k1_ecdsa_sign_recoverable(size_t n_args, const mp_obj_t *args){
     maybe_init_ctx();
     mp_nonce_data = NULL;
     if(n_args < 2){
@@ -947,15 +946,6 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR(usecp256k1_ecdsa_sign_recoverable_obj, 2, use
 
 
 
-
-
-
-
-
-
-
-
-
 // Custom hash function for Nostr: copy the X coordinate directly
 static int nostr_ecdh_x_only(
     unsigned char *output, const unsigned char *x, const unsigned char *y, void *data
@@ -967,7 +957,7 @@ static int nostr_ecdh_x_only(
 }
 
 // pubkey (64-byte deserialized secp256k1_pubkey), seckey
-static mp_obj_t usecp256k1_ecdh(mp_uint_t n_args, const mp_obj_t *args) {
+static mp_obj_t usecp256k1_ecdh(size_t n_args, const mp_obj_t *args) {
     maybe_init_ctx();
 
     if (n_args < 2) {
