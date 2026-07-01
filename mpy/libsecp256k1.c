@@ -12,7 +12,8 @@
 #include "py/builtin.h"
 #include "py/gc.h"
 
-#define DEBUG_PRINTF(...) mp_printf(&mp_plat_print, __VA_ARGS__)
+// #define DEBUG_PRINTF(...) mp_printf(&mp_plat_print, __VA_ARGS__)
+#define DEBUG_PRINTF(...)
 
 #define malloc(b) gc_alloc((b), false)
 #define free gc_free
